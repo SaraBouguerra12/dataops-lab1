@@ -70,7 +70,7 @@ dataops-lab1/
 ├── naive_report.py            # ancien script (référence)
 ├── run_pipeline.py            # point d'entrée du pipeline
 ├── requirements.txt
-└── REPORT.md                  # réponses aux questions du TP
+└── REPORT.md                  # ..
 ```
 
 ## Installation
@@ -88,7 +88,7 @@ pip install -r requirements.txt
 
 **macOS / Linux**
 ```bash
-git clone https://github.com/VOTRE-PSEUDO/dataops-lab1.git
+git clone https://github.com/SaraBouguerra12/dataops-lab1.git
 cd dataops-lab1
 python3 -m venv .venv
 source .venv/bin/activate
