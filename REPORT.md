@@ -138,3 +138,81 @@ Le remote ne contiendrait que `data-v1`. Le `dvc pull` du collègue échouerait 
 * b348a92 Add pipeline, data checks and unit tests
 * fc72483 Empty project with requirements
 ```
+Q5 : stg_orders ne supprime rien. La décision de rejeter appartient à une seule couche, celle des règles. Supprimer la ligne dès le staging la ferait disparaître de la quarantaine, sans motif ni trace.
+Q6 : lire une vue relance sa requête sur le brut à chaque lecture. C’est acceptable en staging : la requête est légère (conversions de types), ne duplique aucune donnée et reste toujours à jour.
+Q7 : dbt remplace {{ ref('stg_orders') }} par le nom complet de la vue, de la forme "warehouse"."main"."stg_orders". Copiez ce que vous voyez dans le fichier compilé.
+Q8 : row_number() over (partition by order_id order by _row_number) numérote les lignes de chaque order_id selon leur position dans le fichier. Le numéro 1 est la première occurrence, les suivantes (> 1) sont des doublons rejetés. _row_number est nécessaire : une table SQL n’a pas d’ordre garanti, il faut donc une colonne explicite pour définir « la première ».
+Q9 : l’analyste crée models/marts/revenue_by_product.sql, un fichier SQL dans le dossier marts, qui lit orders_clean avec ref(). Il ne touche à aucun fichier Python.
+
+Q10 : le test unique sur orders_clean.order_id échoue, car les doublons ne sont plus rejetés. revenue_by_country et son test unique passent en SKIP. C’est voulu : le rapport du directeur n’est ni reconstruit ni publié avec des données fausses. La table précédente reste en place.
+Q11 :
+Contrôle du TP1 (Python)	Son équivalent dbt
+check_schema	stg_orders échoue si une colonne manque (erreur de liaison SQL), et le test not_null sur les colonnes clés
+Les règles 1 à 6 dans clean_orders	Le case when de int_orders_checked.sql
+check_reject_rate	Le test singulier assert_reject_rate_below_20_percent
+rejected_orders.csv	La table orders_rejected
+PIPELINE STOPPED, rien n’est publié	dbt build s’arrête avec le code de sortie 1 et met les modèles suivants en SKIP
+Q12 : les données venaient des lignes écrites dans le YAML (given). Le test n’a besoin ni du CSV, ni de DVC, ni de l’entrepôt : en CI, il tourne sur une machine vierge, vite, avec le même résultat à chaque fois.
+
+## TP3
+
+**Q1. Pourquoi charger toutes les colonnes en texte ?**
+Si DuckDB devinait les types, une seule valeur comme `deux` dans `quantity` ferait changer le type de la colonne ou échouer le chargement, et le schéma varierait d'un jour à l'autre sans prévenir. En chargeant tout en texte, chaque ligne arrive telle quelle, et les types sont choisis explicitement au staging.
+
+**Q2. Que vous apprend le total naïf en SQL ?**
+Le langage ne rend pas un pipeline fiable : le SQL sans contrôle est aussi faux (13950.6) que le Python sans contrôle. La fiabilité vient des règles, des tests et de l'arrêt de la chaîne.
+
+**Q3. Avantage d'avoir gardé le brut ?**
+On peut corriger une règle et recalculer depuis le brut, sans refaire l'extraction à la source, qui peut avoir changé. On garde aussi une trace pour auditer ou comparer avant et après.
+
+**Q4. Que changer dans `profiles.yml` en entreprise ?**
+Le `type` (`snowflake` ou `bigquery`) et les paramètres de connexion (compte, utilisateur, base, entrepôt). Le mot de passe ne s'écrit pas dans le fichier : il se lit dans une variable d'environnement (`env_var`) ou un gestionnaire de secrets, et `profiles.yml` reste hors de Git.
+
+**Q5. Pourquoi ne pas supprimer la commande 1013 dès le staging ?**
+Le staging ne supprime rien : la décision de rejeter appartient à la couche des règles. Supprimer la ligne plus tôt la ferait disparaître de la quarantaine, sans motif ni trace.
+
+**Q6. Que se passe-t-il quand on lit la vue `stg_orders` ?**
+La requête est relancée sur le brut à chaque lecture. C'est acceptable en staging : elle est légère (conversions de types), ne duplique aucune donnée et reste toujours à jour.
+
+**Q7. Par quoi dbt remplace-t-il `{{ ref('stg_orders') }}` ?**
+Par le nom complet de la vue : `"warehouse"."main"."stg_orders"`.
+
+**Q8. Que fait `row_number() over (partition by order_id order by _row_number)` ?**
+Il numérote les lignes de chaque `order_id` selon leur position dans le fichier. Le numéro 1 est la première occurrence, les suivantes (supérieures à 1) sont des doublons rejetés. `_row_number` est nécessaire car une table SQL n'a pas d'ordre garanti : il faut une colonne explicite pour définir « la première ».
+
+**Q9. Comment ajouter le chiffre d'affaires par produit ?**
+L'analyste crée `models/marts/revenue_by_product.sql`, qui lit `orders_clean` avec `ref()`. Il ne touche à aucun fichier Python.
+
+**Q10. Que s'est-il passé en cassant la règle 5 ?**
+Le test `unique` sur `orders_clean.order_id` a échoué, car les doublons n'étaient plus rejetés. `revenue_by_country` et ses tests sont passés en `SKIP`. C'est voulu : le rapport du directeur n'est ni reconstruit ni publié avec des données fausses.
+
+**Q11. Équivalences entre le pipeline Python et dbt**
+
+| Contrôle du TP1 (Python) | Son équivalent dbt |
+|---|---|
+| `check_schema` | Erreur de liaison SQL dans `stg_orders` si une colonne manque, et tests `not_null` sur les colonnes clés |
+| Les règles 1 à 6 dans `clean_orders` | Le `case when` de `int_orders_checked.sql` |
+| `check_reject_rate` | Le test singulier `assert_reject_rate_below_20_percent` |
+| `rejected_orders.csv` | La table `orders_rejected` |
+| `PIPELINE STOPPED`, rien n'est publié | `dbt build` s'arrête avec le code 1 et met les modèles suivants en `SKIP` |
+
+**Q12. D'où venaient les données du test unitaire ?**
+Des lignes écrites dans le YAML (`given`). Le test n'a besoin ni du CSV, ni de DVC, ni de l'entrepôt : en CI, il tourne sur une machine vierge, vite, avec le même résultat à chaque fois.
+
+**Q13. Colonne `country` vide dans la source**
+Tous les modèles descendants de `raw.orders` sont touchés : `stg_orders`, `int_orders_checked`, `orders_clean`, `orders_rejected` et `revenue_by_country`. Le graphe donne cette réponse en quelques secondes (sélection `source+`). Sans lui, dans 200 scripts SQL, il faudrait lire chaque fichier pour retrouver les `ref()` : plusieurs dizaines de minutes, avec un risque d'oubli.
+
+**Q14. Comparaison**
+
+| | Pipeline Python (TP1) | Pipeline dbt (TP3) |
+|---|---|---|
+| Jour 2 : quel contrôle arrête la chaîne ? | `check_reject_rate` (taux de rejet de 100 %) | Le test `assert_reject_rate_below_20_percent` |
+| Jour 3 : quel message d'erreur ? | `PIPELINE STOPPED: Missing columns: ['unit_price']` | `Table "src" does not have a column named "unit_price"` (suggestion : `price`) |
+| Le rapport de la veille est-il conservé ? | Oui, le CSV de sortie du jour 1 n'est pas touché | Oui, la table `revenue_by_country` reste celle du jour 1 |
+| Code de sortie | 1 | 1 |
+
+**Q15. La quarantaine du jour 2 est-elle un problème ?**
+Oui : `orders_rejected` contient encore les rejets du jour 1, alors que les données chargées sont celles du jour 2. Les lignes rejetées du jour 2 sont introuvables au moment où l'on en a le plus besoin. Solution : publier la quarantaine avant le contrôle, par exemple `dbt run --select +orders_rejected` suivi de `dbt build` pour le rapport, ou conserver un historique des rejets avec la colonne `_source_file`.
+
+**Dernière ligne de `dbt build` sur le jour 1 :**
+`22:38:35  Done. PASS=14 WARN=0 ERROR=0 SKIP=0 NO-OP=0 REUSED=0 TOTAL=14`
