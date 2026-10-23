@@ -1,4 +1,4 @@
-# DataOps Lab 1 : d'un script fragile à un pipeline testé
+﻿# DataOps Lab 1 : d'un script fragile à un pipeline testé
 
 ![CI](https://github.com/SaraBouguerra12/dataops-lab1/actions/workflows/ci.yml/badge.svg)
 ![Python](https://img.shields.io/badge/python-3.11-blue)
@@ -47,6 +47,7 @@ flowchart LR
 | Quantité strictement positive | Validité | `invalid_quantity` | Ligne rejetée |
 | Prix entre 0,01 et 1 000 | Validité | `invalid_unit_price` | Ligne rejetée |
 | Un seul `order_id` (on garde le premier) | Unicité | `duplicate_order_id` | Ligne rejetée |
+| Pays dans la liste des cinq pays de la boutique | Validité | `unknown_country` | Ligne rejetée |
 
 Deux contrôles arrêtent tout le pipeline :
 
@@ -129,7 +130,7 @@ Quand le pipeline s'arrête, le dernier rapport publié reste celui du jour 1 : 
 python -m pytest
 ```
 
-5 tests unitaires sur de petites tables construites à la main : calcul du chiffre d'affaires, rejet des quantités négatives, rejet des doublons, normalisation des pays, arrêt sur colonne manquante.
+6 tests unitaires sur de petites tables construites à la main : calcul du chiffre d'affaires, rejet des quantités négatives, rejet des doublons, normalisation des pays, arrêt sur colonne manquante, rejet des pays inconnus.
 
 ## Intégration continue
 
@@ -137,7 +138,6 @@ Le workflow GitHub Actions (`.github/workflows/ci.yml`) s'exécute à chaque `pu
 
 1. installation des dépendances,
 2. exécution des tests `pytest`,
-3. exécution du pipeline sur le fichier du jour 1.
 
 Un test cassé fait passer le badge en rouge.
 
@@ -159,6 +159,32 @@ Pistes non couvertes : **orchestration** (lancement automatique) et **monitoring
 - Valider que le pays appartient à la liste des cinq pays de la boutique.
 - Journaliser chaque exécution (date, fichier, lignes propres, lignes rejetées).
 - Planifier l'exécution quotidienne avec un orchestrateur et envoyer une alerte en cas d'échec.
+
+## Versionnement des données avec DVC
+
+Les données brutes (`data/raw/`) ne sont pas dans Git. DVC les versionne : Git ne garde que le pointeur `data/raw.dvc`, qui contient l'empreinte md5 du dossier. Les fichiers eux-mêmes sont stockés dans le remote DVC, sous le nom de leur empreinte.
+
+| Version | Tag Git | Contenu | Total du rapport |
+|---|---|---|---|
+| 1 | `data-v1` | 30 commandes du 5 octobre | 7 655,90 |
+| 2 | `data-v2` | + 5 commandes en retard | 8 835,40 |
+
+Revenir à une ancienne version des données :
+
+```bash
+git checkout data-v1 -- data/raw.dvc
+dvc checkout
+python run_pipeline.py data/raw/orders_day1.csv   # TOTAL: 7655.90
+
+git checkout HEAD -- data/raw.dvc
+dvc checkout                                       # retour à la dernière version
+```
+
+Il faut toujours enchaîner `git checkout ... data/raw.dvc` et `dvc checkout`. Sans `dvc checkout`, le pointeur annonce une version et les fichiers en contiennent une autre : le rapport est faux sans aucune erreur.
+
+Récupérer les données dans un clone : `dvc pull`. Dans ce projet pédagogique, le remote DVC est un dossier local (`../dvc-storage`), donc `dvc pull` ne fonctionne que sur la machine qui le possède. En entreprise, on utilise S3, Google Drive ou un serveur partagé.
+
+Le rapport est décrit comme une étape DVC (`dvc.yaml`, `dvc.lock`) : `dvc repro` ne relance le pipeline que si le code ou les données ont changé.
 
 ## Auteur
 
