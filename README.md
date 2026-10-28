@@ -1,4 +1,4 @@
-﻿# DataOps Lab 1 : d'un script fragile à un pipeline testé
+﻿# DataOps Lab  : d'un script fragile à un pipeline testé
 
 ![CI](https://github.com/SaraBouguerra12/dataops-lab1/actions/workflows/ci.yml/badge.svg)
 ![Python](https://img.shields.io/badge/python-3.11-blue)
